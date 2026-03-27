@@ -150,11 +150,11 @@ def build_report_prompt(
     recent_context = "以及近期重大事件摘要" if include_recent_developments else ""
     if is_bank_stock_profile:
         if include_recent_developments:
-            return f"请基于已上传的全部财报、最新市场数据快照{recent_context}，为{stock_name}生成一份全方位的银行股投资备忘录。"
-        return f"请基于已上传的全部财报和最新市场数据快照，为{stock_name}生成一份全方位的银行股投资备忘录。"
+            return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）、最新市场数据快照{recent_context}，为{stock_name}生成一份全方位的银行股投资备忘录。"
+        return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）和最新市场数据快照，为{stock_name}生成一份全方位的银行股投资备忘录。"
     if include_recent_developments:
-        return f"请基于已上传的全部财报、最新市场数据快照{recent_context}，为{stock_name}生成一份全方位的投资备忘录。"
-    return f"请基于已上传的全部财报和最新市场数据快照，为{stock_name}生成一份全方位的投资备忘录。"
+        return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）、最新市场数据快照{recent_context}，为{stock_name}生成一份全方位的投资备忘录。"
+    return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）和最新市场数据快照，为{stock_name}生成一份全方位的投资备忘录。"
 
 
 def detect_market(stock_input: str) -> str:
@@ -954,11 +954,11 @@ def build_directional_summary_prompt(
     """Build a minimal stock-specific summary prompt and leave structure to the system prompt."""
     if is_bank_stock_profile:
         if include_recent_developments:
-            return f"请基于已上传的全部财报、最新市场数据快照以及近期重大事件摘要，为{stock_name}写一份全方位的银行股投资总结。"
-        return f"请基于已上传的全部财报和最新市场数据快照，为{stock_name}写一份全方位的银行股投资总结。"
+            return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）、最新市场数据快照以及近期重大事件摘要，为{stock_name}写一份全方位的银行股投资总结。"
+        return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）和最新市场数据快照，为{stock_name}写一份全方位的银行股投资总结。"
     if include_recent_developments:
-        return f"请基于已上传的全部财报、最新市场数据快照以及近期重大事件摘要，为{stock_name}写一份全方位的投资总结。"
-    return f"请基于已上传的全部财报和最新市场数据快照，为{stock_name}写一份全方位的投资总结。"
+        return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）、最新市场数据快照以及近期重大事件摘要，为{stock_name}写一份全方位的投资总结。"
+    return f"请基于已上传的全部财报（重点结合近5年年报及最新定期报告）和最新市场数据快照，为{stock_name}写一份全方位的投资总结。"
 
 
 def run_post_upload_analysis(
