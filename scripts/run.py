@@ -392,6 +392,8 @@ def format_notebook_title(market: str, stock_code: str, stock_name: str) -> str:
     safe_market = normalize_market_label(market)
     safe_code = (stock_code or "UNKNOWN").strip().upper()
     safe_name = " ".join((stock_name or safe_code).strip().split())
+    if safe_name.upper() == safe_code:
+        return f"[{safe_market}] {safe_code} - 财报分析"
     return f"[{safe_market}] {safe_code} {safe_name} - 财报分析"
 
 
@@ -1160,7 +1162,7 @@ def main():
             downloader = SecEdgarDownloader()
             all_files = downloader.get_reports(stock_input, output_dir)
             prompt_file = "us_financial_analyst_prompt.md"
-            stock_name = stock_input.upper()
+            stock_name = downloader.get_company_name(stock_input) or stock_input.upper()
             stock_code = stock_input.upper()
         elif market == "HK":
             from hk_downloader import HkexDownloader
@@ -1206,7 +1208,10 @@ def main():
         # Determine stock_name for existing cache
         if market == "US":
             prompt_file = "us_financial_analyst_prompt.md"
-            stock_name = stock_input.upper()
+            from us_downloader import SecEdgarDownloader
+            downloader = SecEdgarDownloader()
+            stock_name = downloader.get_company_name(stock_input) or stock_input.upper()
+            stock_code = stock_input.upper()
         elif market == "HK":
             stock_name = f"HK_{stock_input}"
             stock_code = stock_input

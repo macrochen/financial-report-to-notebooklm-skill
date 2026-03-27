@@ -20,26 +20,45 @@ class SecEdgarDownloader:
         }
         # Increased timeout and added HTTP2 support for better performance
         self.client = httpx.Client(timeout=60.0, follow_redirects=True, http2=True)
+        self._ticker_mapping = None
 
-    def get_cik(self, ticker: str) -> str:
+    def _load_ticker_mapping(self):
+        """Load and cache the official SEC ticker mapping."""
+        if self._ticker_mapping is not None:
+            return self._ticker_mapping
+
+        resp = self.client.get("https://www.sec.gov/files/company_tickers.json", headers=self.headers)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Ticker mapping fetch failed: HTTP {resp.status_code}")
+        self._ticker_mapping = resp.json()
+        return self._ticker_mapping
+
+    def lookup_company_info(self, ticker: str) -> tuple[str | None, str | None]:
+        """Return (CIK, company_name) from the SEC ticker mapping."""
         ticker = ticker.upper()
-        # Handle cases like BRK.B which SEC stores as BRK-B
         ticker_norm = ticker.replace(".", "-")
         print(f"🔍 Looking up CIK for {ticker}...")
         try:
-            # Try to get CIK from the official SEC ticker-to-cik mapping
-            resp = self.client.get("https://www.sec.gov/files/company_tickers.json", headers=self.headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                for item in data.values():
-                    if item["ticker"] == ticker or item["ticker"] == ticker_norm:
-                        cik = str(item["cik_str"]).zfill(10)
-                        print(f"✅ Found CIK: {cik}")
-                        return cik
-            print(f"❌ CIK lookup failed: HTTP {resp.status_code}")
+            data = self._load_ticker_mapping()
+            for item in data.values():
+                if item["ticker"] == ticker or item["ticker"] == ticker_norm:
+                    cik = str(item["cik_str"]).zfill(10)
+                    company_name = (item.get("title") or ticker).strip()
+                    print(f"✅ Found CIK: {cik}")
+                    return cik, company_name
+            print("❌ CIK lookup failed: ticker not found in SEC mapping")
         except Exception as e:
             print(f"❌ CIK lookup error: {e}")
-        return None
+        return None, None
+
+    def get_company_name(self, ticker: str) -> str | None:
+        """Return the SEC company title for one ticker when available."""
+        _, company_name = self.lookup_company_info(ticker)
+        return company_name
+
+    def get_cik(self, ticker: str) -> str:
+        cik, _ = self.lookup_company_info(ticker)
+        return cik
 
     def get_filings(self, cik: str):
         url = f"https://data.sec.gov/submissions/CIK{cik}.json"
