@@ -1,0 +1,34 @@
+{
+  "questions": [
+    {
+      "slug": "business_quality",
+      "title": "生意模式与护城河",
+      "question": "请基于全部已上传的10-K和10-Q，并参考最新市场数据快照，判断这是否是一门容易理解、能够长期赚钱的好生意。请分析业务分部、增长驱动、竞争优势、客户黏性和最近一个季度相对年报的重要变化，并判断护城河是在变宽还是变窄。"
+    },
+    {
+      "slug": "capital_allocation",
+      "title": "管理层与资本配置",
+      "question": "请结合财报与最新市场数据快照，评估管理层是否像股东代理人一样做资本配置。重点看 buyback、dividend、share dilution、Stock-Based Compensation、M&A、capex 和 debt management，并判断这些动作是否真正提升了 per-share value。"
+    },
+    {
+      "slug": "financial_quality",
+      "title": "盈利质量与三张表验证",
+      "question": "请保留《手把手教你读财报》那种三张表交叉验证思路，同时结合 US GAAP 口径，从 Revenue、Gross Margin、Operating Margin、Net Income、Operating Cash Flow、Free Cash Flow、Cash/Marketable Securities、Debt 和 Stock-Based Compensation 几个维度评估这家公司的盈利质量和财务稳健性。"
+    },
+    {
+      "slug": "red_flags",
+      "title": "风险点与反方论证",
+      "question": "请结合 MD&A、财报附注和最新市场数据快照，梳理这家公司最关键的风险点与红旗，包括收入确认、诉讼、债务到期、稀释、一次性调整、商誉或减值风险；然后站在反方角度写出为什么一个谨慎的价值投资者可能会直接放弃它。"
+    },
+    {
+      "slug": "valuation",
+      "title": "估值、安全边际与买入区间",
+      "question": "请判断这家公司更适合使用 PE、PS、EV/EBITDA、FCF yield 还是 owner earnings 等估值框架，并结合最新市场数据快照中的股价、市值和总股本，给出合理价值区间、20%安全边际下的买入区间，以及当前价格是昂贵、合理还是便宜。"
+    },
+    {
+      "slug": "investment_verdict",
+      "title": "最终投资结论",
+      "question": "请把以上分析收敛成一份简洁的价值投资结论，必须给出四档之一：不投、观察、可投、击球区。请同时说明 bull case、bear case，以及哪些条件会触发结论变化。"
+    }
+  ]
+}

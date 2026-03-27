@@ -12,6 +12,9 @@ data/*.pdf
 *.pdf
 temp/
 output/
+data/
+outputs/
+*.swp
 
 # OS
 .DS_Store

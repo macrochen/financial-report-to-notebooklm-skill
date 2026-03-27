@@ -39,6 +39,7 @@ class CnInfoDownloader:
         self.timeout = httpx.Timeout(60.0)
         self.query_url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
         self.market_to_stocks = self._load_stocks()
+        self.failed_reports = []
 
     def _load_stocks(self) -> dict:
         """Load stock database from JSON file"""
@@ -64,6 +65,30 @@ class CnInfoDownloader:
                     return code, info
 
         return None, None
+
+    def build_report_plan(self, as_of: datetime.date = None, annual_report_count: int = 5) -> dict:
+        """Build a dynamic A-share report download plan based on today's date."""
+        as_of = as_of or datetime.date.today()
+
+        latest_annual_year = as_of.year - 1
+        annual_years = list(
+            range(latest_annual_year - annual_report_count + 1, latest_annual_year + 1)
+        )
+
+        periodic_targets = {
+            # Q1 filings are usually fully available after April.
+            "q1": as_of.year if as_of >= datetime.date(as_of.year, 5, 1) else as_of.year - 1,
+            # Semi-annual filings are usually fully available after August.
+            "semi": as_of.year if as_of >= datetime.date(as_of.year, 9, 1) else as_of.year - 1,
+            # Q3 filings are usually fully available after October.
+            "q3": as_of.year if as_of >= datetime.date(as_of.year, 11, 1) else as_of.year - 1,
+        }
+
+        return {
+            "as_of": as_of.isoformat(),
+            "annual_years": annual_years,
+            "periodic_targets": periodic_targets,
+        }
 
     def _query_announcements(self, filter_params: dict) -> list:
         """Query cninfo API for announcements"""
@@ -134,25 +159,50 @@ class CnInfoDownloader:
         # Clean filename
         filename = "".join(c for c in filename if c.isalnum() or c in "._-")
         filepath = os.path.join(output_dir, filename)
+        md_path = filepath.rsplit(".", 1)[0] + ".md"
+        error_path = filepath.rsplit(".", 1)[0] + "_convert_error.txt"
+
+        if os.path.exists(md_path):
+            print(f"↪️ Reusing existing Markdown: {os.path.basename(md_path)}")
+            return md_path
 
         if not os.path.exists(filepath):
             try:
                 print(f"Downloading: {title}")
                 resp = client.get(f"http://static.cninfo.com.cn/{adjunct_url}")
+                resp.raise_for_status()
                 with open(filepath, "wb") as f:
                     f.write(resp.content)
-                
-                # Convert to Markdown
-                md_path = pdf_to_markdown(filepath)
-                if md_path:
-                    os.remove(filepath) # Keep space clean
-                    return md_path
-                return filepath
             except Exception as e:
                 print(f"Download failed: {e}", file=sys.stderr)
+                self.failed_reports.append(
+                    {"title": title, "stage": "download", "error": str(e), "path": filepath}
+                )
                 return None
 
-        return filepath
+        converted_md_path, convert_error = pdf_to_markdown(filepath, timeout_seconds=90)
+        if converted_md_path:
+            if os.path.exists(error_path):
+                os.remove(error_path)
+            try:
+                os.remove(filepath)  # Keep cache lean once markdown exists
+            except Exception:
+                pass
+            return converted_md_path
+
+        error_text = (
+            f"PDF to Markdown conversion failed\n\n"
+            f"title={title}\n"
+            f"pdf_path={filepath}\n"
+            f"error={convert_error or 'Unknown conversion error'}\n"
+        )
+        with open(error_path, "w", encoding="utf-8") as f:
+            f.write(error_text)
+        print(f"⚠️ Conversion failed, saved log: {os.path.basename(error_path)}")
+        self.failed_reports.append(
+            {"title": title, "stage": "convert", "error": convert_error or "Unknown conversion error", "path": error_path}
+        )
+        return None
 
     def _is_main_annual_report(self, title: str, year: int) -> bool:
         """Check if this is the main annual report (not summary/English)"""
@@ -211,41 +261,54 @@ class CnInfoDownloader:
         return downloaded
 
     def download_periodic_reports(
-        self, stock_code: str, year: int, output_dir: str
+        self, stock_code: str, periodic_targets, output_dir: str
     ) -> list:
-        """Download Q1, semi-annual, Q3 reports for current year"""
+        """Download the latest available Q1, semi-annual, and Q3 reports."""
         downloaded = []
+
+        if isinstance(periodic_targets, int):
+            periodic_targets = {
+                "q1": periodic_targets,
+                "semi": periodic_targets,
+                "q3": periodic_targets,
+            }
 
         report_configs = [
             (
                 "q1",
                 "category_yjdbg_szsh",
                 "一季度报告",
-                f"{year}-04-01",
-                f"{year}-05-31",
+                periodic_targets.get("q1"),
+                "04-01",
+                "05-31",
             ),
             (
                 "semi",
                 "category_bndbg_szsh",
                 "半年度报告",
-                f"{year}-08-01",
-                f"{year}-09-30",
+                periodic_targets.get("semi"),
+                "08-01",
+                "09-30",
             ),
             (
                 "q3",
                 "category_sjdbg_szsh",
                 "三季度报告",
-                f"{year}-10-01",
-                f"{year}-11-30",
+                periodic_targets.get("q3"),
+                "10-01",
+                "11-30",
             ),
         ]
 
-        for report_type, category, search_term, start_date, end_date in report_configs:
+        for report_type, category, search_term, target_year, start_suffix, end_suffix in report_configs:
+            if not target_year:
+                continue
+
             filter_params = {
                 "stock": [stock_code],
                 "category": [category],
                 "searchkey": search_term,
-                "seDate": f"{start_date}~{end_date}",
+                "seDate": f"{target_year}-{start_suffix}~{target_year}-{end_suffix}",
             }
 
             announcements = self._query_announcements(filter_params)
@@ -255,7 +318,7 @@ class CnInfoDownloader:
                     filepath = self._download_pdf(ann, output_dir)
                     if filepath:
                         downloaded.append(filepath)
-                        print(f"✅ Downloaded: {year} {search_term}")
+                        print(f"✅ Downloaded: {target_year} {search_term}")
                     break
 
         return downloaded

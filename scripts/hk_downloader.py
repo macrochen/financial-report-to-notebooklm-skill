@@ -12,11 +12,63 @@ import tempfile
 import time
 import re
 from playwright.sync_api import sync_playwright
-from converter import pdf_to_markdown
 
 class HkexDownloader:
     def __init__(self):
         self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        self.include_keywords = [
+            "年報",
+            "年报",
+            "年度報告",
+            "年度报告",
+            "中期報告",
+            "中期报告",
+            "中期業績",
+            "中期业绩",
+            "中期報告書",
+            "季度報告",
+            "季度报告",
+            "第一季度報告",
+            "第三季度報告",
+        ]
+        self.exclude_keywords = [
+            "esg",
+            "環境、社會及管治",
+            "环境、社会及管治",
+            "可持續發展",
+            "可持续发展",
+            "sustainability",
+            "sustainable",
+            "governance",
+            "摘要",
+            "更正",
+            "補充",
+            "补充",
+            "结果",
+            "業績公告",
+            "业绩公告",
+            "公告",
+            "通函",
+        ]
+
+    def is_financial_report_title(self, title: str) -> bool:
+        """Keep annual/interim/quarterly reports and reject ESG/announcements."""
+        normalized = (title or "").strip()
+        normalized_lower = normalized.lower()
+        if not normalized:
+            return False
+        if any(keyword.lower() in normalized_lower for keyword in self.exclude_keywords):
+            return False
+        return any(keyword.lower() in normalized_lower for keyword in self.include_keywords)
+
+    def add_report(self, reports: list, title: str, full_url: str):
+        """Add a report if it passes title filtering and is not duplicated."""
+        if not self.is_financial_report_title(title):
+            return
+        if any(item["url"] == full_url for item in reports):
+            return
+        print(f"  ✅ 捕获: {title}")
+        reports.append({"title": title, "url": full_url})
 
     def find_reports(self, stock_code: str) -> list:
         stock_code = stock_code.zfill(5)
@@ -26,12 +78,14 @@ class HkexDownloader:
         url = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=zh"
         
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False, slow_mo=1000)
+            # Default to headless mode so the downloader can run in sandboxed
+            # or CI-like environments where a headed browser is unavailable.
+            browser = p.chromium.launch(headless=True, slow_mo=1000)
             context = browser.new_context(user_agent=self.user_agent, viewport={'width': 1280, 'height': 1000})
             page = context.new_page()
             
             try:
-                page.goto(url, wait_until="networkidle")
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 
                 # 1. 第一步：录入代码并选中联想词
                 print("1️⃣ 录入股份代号...")
@@ -84,37 +138,48 @@ class HkexDownloader:
                 # 7. 提取链接 (双重保险)
                 print("📋 正在提取符合条件的报表链接...")
                 
-                # 方法 A: 选择器提取
-                links = page.query_selector_all(".doc-link a, a[href*='.pdf']")
+                # 方法 A: 结果表逐行提取，优先使用整行文本做标题判断
+                links = page.query_selector_all(".doc-link a, .table-container a[href*='.pdf']")
                 print(f"🔎 扫描到 {len(links)} 个潜在链接...")
 
                 for link_el in links:
                     try:
                         title = link_el.inner_text().strip()
                         href = link_el.get_attribute("href")
-                        if not href or ".pdf" not in href.lower(): continue
-                        
+                        if not href or ".pdf" not in href.lower():
+                            continue
+
+                        row_text = ""
+                        try:
+                            row = link_el.locator("xpath=ancestor::tr[1]")
+                            if row.count():
+                                row_text = row.inner_text().strip()
+                        except Exception:
+                            row_text = ""
+
+                        title = row_text or title
                         full_url = "https://www1.hkexnews.hk" + href if href.startswith("/") else href
-                        
-                        # 简繁兼容过滤
-                        if any(k in title for k in ["年報", "年报", "中期", "年度報告", "年度报告", "中期業績", "中期业绩"]):
-                            if all(k not in title for k in ["摘要", "更正", "補充", "结果", "ESG"]):
-                                if not any(r["url"] == full_url for r in reports):
-                                    print(f"  ✅ 捕获: {title}")
-                                    reports.append({"title": title, "url": full_url})
-                    except: continue
-                    if len(reports) >= 12: break
+
+                        self.add_report(reports, title, full_url)
+                    except Exception:
+                        continue
+                    if len(reports) >= 12:
+                        break
 
                 # 方法 B: 源码正则提取 (降级兜底)
                 if not reports:
-                    print("🔥 触发降级方案：从页面源码正则抠取链接...")
+                    print("🔥 触发降级方案：从页面源码提取标题和链接，并继续执行财报过滤...")
                     content = page.content()
-                    pdf_matches = re.findall(r'href="(/listedco/listconews/sehk/[^"]+\.pdf)"', content)
-                    for pdf_url in pdf_matches:
+                    pdf_matches = re.findall(
+                        r'href="(/listedco/listconews/sehk/[^"]+\.pdf)"[^>]*>(.*?)</a>',
+                        content,
+                        re.IGNORECASE | re.DOTALL,
+                    )
+                    for pdf_url, raw_title in pdf_matches:
                         full_url = "https://www1.hkexnews.hk" + pdf_url
-                        title = f"Report_{pdf_url.split('/')[-1]}"
-                        if not any(r["url"] == full_url for r in reports):
-                            reports.append({"title": title, "url": full_url})
+                        title = re.sub(r"<[^>]+>", " ", raw_title)
+                        title = re.sub(r"\s+", " ", title).strip()
+                        self.add_report(reports, title, full_url)
 
                 print(f"🎉 最终获取到 {len(reports)} 份报表。")
                 time.sleep(2)
@@ -144,17 +209,13 @@ class HkexDownloader:
                         resp = client.get(r["url"])
                         
                         if resp.status_code == 200:
-                            # 验证是否为真实的 PDF (前 4 字节应为 %PDF)
+                            # 港股长报转 Markdown 很慢，直接保留 PDF 给 NotebookLM 更稳。
                             if resp.content.startswith(b"%PDF"):
                                 with open(filepath, "wb") as f:
                                     f.write(resp.content)
-                                
-                                md_path = pdf_to_markdown(filepath)
-                                if md_path:
-                                    results.append(md_path)
-                                    os.remove(filepath)
-                                    success = True
-                                    break
+                                results.append(filepath)
+                                success = True
+                                break
                             else:
                                 print(f"⚠️ 下载内容似乎不是有效的 PDF，重试中...")
                         else:
