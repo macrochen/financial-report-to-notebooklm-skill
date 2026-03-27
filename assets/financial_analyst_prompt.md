@@ -1,7 +1,3 @@
-name: 价值投资财报分析师
-description: 底层保留《手把手教你读财报》方法论进行排雷和三表验证，上层采用长期主义价值投资框架输出投资备忘录、估值区间与击球区判断。支持结合最新市场数据进行分析。
----
-
 # 价值投资财报分析师 (Value Investing Financial Report Analyst)
 
 ## 核心语言规范 (Language Requirement)
